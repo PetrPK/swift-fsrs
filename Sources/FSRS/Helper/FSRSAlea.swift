@@ -5,7 +5,6 @@
 //
 
 import Foundation
-import JavaScriptCore
 
 class FSRSAlea {
     struct State: Equatable {
@@ -21,23 +20,23 @@ class FSRSAlea {
     private var s2: Double
 
     init(seed: Any? = nil) {
-        let mash = MashWrapper()
+        var mash = Mash()
         c = 1
-        s0 = mash.do(" ")
-        s1 = mash.do(" ")
-        s2 = mash.do(" ")
+        s0 = mash.mash(" ")
+        s1 = mash.mash(" ")
+        s2 = mash.mash(" ")
 
         let seedValue: String = String(describing: seed ?? Date().timeIntervalSince1970)
-        s0 -= mash.do(seedValue)
+        s0 -= mash.mash(seedValue)
         if s0 < 0 { s0 += 1 }
-        s1 -= mash.do(seedValue)
+        s1 -= mash.mash(seedValue)
         if s1 < 0 { s1 += 1 }
-        s2 -= mash.do(seedValue)
+        s2 -= mash.mash(seedValue)
         if s2 < 0 { s2 += 1 }
     }
 
     func next() -> Double {
-        let t = 2091639 * s0 + Double(c) * 2.3283064365386963e-10 // 2^-32
+        let t = 2091639 * s0 + Double(c) * pow(2, -32)
         s0 = s1
         s1 = s2
         c = Int(floor(t))
@@ -58,43 +57,23 @@ class FSRSAlea {
     }
 }
 
-struct MashWrapper {
-    var helper: JSContext? = {
-        let context = JSContext()
-        context?.exceptionHandler = {
-            print($0.debugDescription)
-            print($1.debugDescription)
+struct Mash {
+    var n: Double = 0xefc8249d
+    
+    mutating func mash(_ str: String) -> Double {
+        var n: Double = self.n
+        for c in str {
+            n += Double(UInt32(c.asciiValue!))
+            var h = 0.02519603282416938 * n
+            n = Double(UInt32(h.rounded(.down)))
+            h -= n
+            h *= n
+            n = Double(UInt32(h.rounded(.down)))
+            h -= n
+            n += h * pow(2, 32)
         }
-        context?.evaluateScript(
-"""
-function Mash() {
-    let n = 0xefc8249d;
-    return function mash(data) {
-        data = String(data);
-        for (let i = 0; i < data.length; i++) {
-            n += data.charCodeAt(i);
-            let h = 0.02519603282416938 * n;
-            n = h >>> 0;
-            h -= n;
-            h *= n;
-            n = h >>> 0;
-            h -= n;
-            n += h * 0x100000000; // 2^32
-        }
-        return (n >>> 0) * 2.3283064365386963e-10; // 2^-32
-    }
-}
-const mash = Mash()
-"""
-        )
-        return context
-    }()
-
-    func `do`(_ data: String) -> Double {
-        let value = helper?.evaluateScript(
-            "mash('\(data)')"
-        )
-        return value?.toDouble() ?? 0
+        self.n = n
+        return n * pow(2, -32)
     }
 }
 
@@ -122,7 +101,7 @@ struct RandomNumberGeneratorWrapper: PRNG {
     }
 
     func double() -> Double {
-        next() + Double(UInt(next() * 0x200000)) * 1.1102230246251565e-16 // 2^-53
+        next() + Double(UInt(next() * 0x200000)) * pow(2, -53)
     }
 
     func state() -> FSRSAlea.State {
